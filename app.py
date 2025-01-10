@@ -10,6 +10,7 @@ from langchain.schema import SystemMessage, HumanMessage
 # .envファイルからOPENAI_API_KEYを読み込む
 load_dotenv()
 openai_api_key = os.environ.get("OPENAI_API_KEY")
+st.write(openai_api_key)
 
 # --- 1段階目: 回答生成用のLLM -------------------------------------------------- #
 def generate_response(user_query: str) -> str:
@@ -18,13 +19,21 @@ def generate_response(user_query: str) -> str:
     第一段階として生成する関数
     """
     system_prompt = (
-        "あなたは小学生向けプログラミング教室の優しいチューターです。"
-        "以下のルールを守りながら、子供向けにわかりやすく応答してください。"
+        """
+        あなたは小学生向けプログラミング教室の優しいチューターです。
+        以下のルールを守りながら、子供向けにわかりやすく応答してください。
+        - 子どもにとってわかりやすい言葉遣いを心がけましょう。専門用語は避け、親しみやすさを増すため、適宜絵文字などを使ってあげてください。
+        - 回答は長すぎると子どもにとって理解しにくくなります。関連することを一気に言うのではなく、聞かれたことに要件を絞って簡潔に答えてください。
+        - 子供の理解を助けることを目的としてください。単に質問に答えたり、代わりにプログラムを提供するだけでなく、最後に理解度を試すための簡単なクイズを出すなどの工夫もしてください。
+            例: classの意味について聞かれた後、簡単な例で説明 -> その後、classの意味を尋ねる簡単な3択問題を出して終わりにする、など。
+        """
+
     )
     # ChatOpenAIのインスタンス (最新のLangChain 0.3準拠)
     chat = ChatOpenAI(
         temperature=0.3,
-        openai_api_key=openai_api_key
+        openai_api_key=openai_api_key,
+        model="gpt-4o-mini"
     )
     response = chat([
         SystemMessage(content=system_prompt),
@@ -60,26 +69,28 @@ def main():
     if "history" not in st.session_state:
         st.session_state["history"] = []
 
-    # ユーザー入力欄
-    user_input = st.text_input("質問を入力してください", value="", max_chars=200)
-
-    if st.button("送信"):
-        if user_input.strip():
-            # 1. 回答生成
-            generated = generate_response(user_input)
-            # 2. 監督モデルでレビュー
-            supervised = supervise_response(generated)
-
-            # 履歴に追加
-            st.session_state["history"].append({"role": "user", "content": user_input})
-            st.session_state["history"].append({"role": "assistant", "content": supervised})
-
-    # チャット履歴を表示
+    # ユャット履歴を表示
     for msg in st.session_state["history"]:
-        if msg["role"] == "user":
-            st.markdown(f"**ユーザー**: {msg['content']}")
-        else:
-            st.markdown(f"**アシスタント**: {msg['content']}")
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+
+    # チャット入力
+    if prompt := st.chat_input("質問を入力してください"):
+        # ユーザーメッセージを表示
+        with st.chat_message("user"):
+            st.write(prompt)
+
+        # アシスタントの応答を処理
+        with st.chat_message("assistant"):
+            with st.status("考え中...", expanded=True) as status:
+                st.write("🤔 回答を生成しています...")
+                # 1. 回答生成
+                generated = generate_response(prompt)
+                status.update(label="完了！", state="complete", expanded=False)
+            st.write(generated)
+
+        # 履歴に追加
+        st.session_state["history"].append({"role": "user", "content": prompt})
 
 if __name__ == "__main__":
     main()
