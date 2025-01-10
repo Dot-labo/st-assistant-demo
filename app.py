@@ -5,12 +5,11 @@ from dotenv import load_dotenv
 
 # LangChain v0.3
 from langchain.chat_models import ChatOpenAI
-from langchain.schema import SystemMessage, HumanMessage
+from langchain.schema import SystemMessage, HumanMessage, AIMessage
 
 # .envファイルからOPENAI_API_KEYを読み込む
 load_dotenv()
 openai_api_key = os.environ.get("OPENAI_API_KEY")
-st.write(openai_api_key)
 
 # --- 1段階目: 回答生成用のLLM -------------------------------------------------- #
 def generate_response(user_query: str) -> str:
@@ -35,10 +34,21 @@ def generate_response(user_query: str) -> str:
         openai_api_key=openai_api_key,
         model="gpt-4o-mini"
     )
-    response = chat([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=user_query)
-    ])
+    # チャット履歴からメッセージを作成（直近20件に制限）
+    messages = [SystemMessage(content=system_prompt)]
+    recent_history = st.session_state["history"][-20:] if len(st.session_state["history"]) > 20 else st.session_state["history"]
+    
+    # セッション内の履歴をメッセージに変換
+    for msg in recent_history:
+        if msg["role"] == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        elif msg["role"] == "assistant":
+            messages.append(AIMessage(content=msg["content"]))
+    
+    # 新しい質問を追加
+    messages.append(HumanMessage(content=user_query))
+    
+    response = chat(messages)
     return response.content
 
 # --- 2段階目: 回答監督用のLLM -------------------------------------------------- #
@@ -63,7 +73,7 @@ def supervise_response(generated_answer: str) -> str:
 
 # --- Streamlit アプリ -------------------------------------------------------- #
 def main():
-    st.title("こどもプログラミング教室向けチャットアプリ")
+    st.title("AI先生(仮)")
 
     # チャットの履歴をセッションに保存
     if "history" not in st.session_state:
@@ -89,8 +99,9 @@ def main():
                 status.update(label="完了！", state="complete", expanded=False)
             st.write(generated)
 
-        # 履歴に追加
+        # 履歴に追加（アシスタントの応答も保存）
         st.session_state["history"].append({"role": "user", "content": prompt})
+        st.session_state["history"].append({"role": "assistant", "content": generated})
 
 if __name__ == "__main__":
     main()
